@@ -2,6 +2,25 @@
 from copy import deepcopy
 import torch
 
+# 这段代码定义了一个名为calculate_metric的函数，它用于计算AOPC（Area Over the Perturbation Curve）指标。AOPC是一种用于评估模型解释性的指标，它通过测量模型预测概率随输入扰动变化的程度来评估模型的敏感性。
+
+# 函数的输入参数包括：
+
+# args：包含各种设置和参数的对象。
+# predictor：用于进行预测的模型。
+# label_id：目标标签的ID。
+# probs：模型对原始输入的预测概率。
+# tree：表示输入的树结构。
+# aopc_token：表示扰动类型的字符串，可以是"del"（删除）或其他值（替换为填充符）。
+# pad_token：用于替换的填充符。
+# s_text：原始输入的文本。
+# metric：要计算的指标，这里默认为"AOPC"。
+# s_text_a和s_text_b：用于处理双输入任务（如自然语言推理）的额外输入。
+# 在函数中，首先根据top和pool_size参数确定要进行扰动的单词数量k。然后，对每个要进行扰动的单词，根据aopc_token的值进行删除或替换操作，然后使用predictor计算扰动后的预测概率，并计算与原始预测概率的差值delta_p。所有的delta_p被添加到pool列表中。
+
+# 最后，根据delta_p的值对pool列表进行排序，并返回前candidate_size个元素的delta_p值，这些值就是AOPC指标的结果。
+
+# 总的来说，这个函数的主要作用是计算模型对输入扰动的敏感性，这是通过测量模型预测概率随输入扰动变化的程度来实现的。
 def calculate_metric(args,predictor,label_id,probs,tree,aopc_token,pad_token,s_text,metric="AOPC",s_text_a=None,s_text_b=None):
     
     aopc_delta = []

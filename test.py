@@ -58,12 +58,23 @@ if __name__ == "__main__":
     bert_pretrained_file = args.bert_path
 
 
+    # 指定词汇表文件的路径
     vocab_file = os.path.join(bert_pretrained_file,"vocab.txt")
+
+    # 打开词汇表文件，并读取所有行
     with open(vocab_file,"r") as f:
         vocabs = f.readlines()
+
+    # 去除每个词汇的前后空格
     vocab = [tok.strip() for tok in vocabs]
+
+    # 创建一个字典，将词汇的ID映射到词汇本身
     id2tok = {ID : tok for ID,tok in enumerate(vocab)}
+
+    # 创建一个字典，将词汇本身映射到词汇的ID
     tok2id = {tok : ID for ID,tok in enumerate(vocab)} 
+
+    # 使用预训练的BERT模型文件初始化BERT模型
     bert = BertModel.from_pretrained(bert_pretrained_file)
 
     tokenizer = BertTokenizer.from_pretrained(bert_pretrained_file)

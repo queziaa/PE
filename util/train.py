@@ -17,75 +17,104 @@ def train(
     dev_data_loader=None,
     scheduler=None,
 ):
-    # Train the probe
+    # 将模型设置为训练模式
     probe.train()
+
+    # 初始化训练损失和验证损失
     train_loss, dev_loss = 0, 0
+
+    # 初始化训练准确率和验证准确率
     train_acc, dev_acc = 0, 0
+
+    # 对训练数据加载器中的每一个批次进行遍历
     for batch in tqdm(train_data_loader, desc="[Train]"):
+        # 清零优化器的梯度
         optimizer.zero_grad()
 
-        # print("batch0:{} batch1:{} batch2:{} batch3:{}".format(batch[0], batch[1], batch[2], batch[3]))
+        # 从批次中获取输入数据和标签
         text_input_ids,  text_attention_mask, text_token_type_ids, label = (
             batch[0],
             batch[1],
             batch[2],
             batch[3],
         )
+
+        # 将输入数据和标签移动到模型所在的设备上
         text_input_ids, text_token_type_ids, text_attention_mask, label = (
             text_input_ids.to(probe.device),
             text_token_type_ids.to(probe.device),
             text_attention_mask.to(probe.device),
             label.to(probe.device),
         )
+        
+    # 不计算梯度，以节省内存并加速计算
+    with th.no_grad():
+        # 使用BERT模型对输入数据进行前向传播，得到隐藏状态
+        outputs = bert(
+            text_input_ids,
+            attention_mask=text_attention_mask,
+            token_type_ids=text_token_type_ids,
+            output_hidden_states=True,
+        )
+        # 获取所有层的隐藏状态
+        hidden_states = outputs[2]
 
-        with th.no_grad():
-            outputs = bert(
-                text_input_ids,
-                attention_mask=text_attention_mask,
-                token_type_ids=text_token_type_ids,
-                output_hidden_states=True,
-            )
-            hidden_states = outputs[2] # 12 layers output
-            # 10th layer 
-            sequence_output = (
-                hidden_states[probe.layer_num].to(probe.device).to(probe.default_dtype)
-            )
-        # print(sequence_output.shape)
-        logits = probe(sequence_output)
-        # print(logits.shape)
-        if probe.type == "trec":
-            logits = logits.unsqueeze(0)
-        C = type_num[probe.type]
-        # print(C)
-        # print("logits shape:{} C:{} label shape:{}".format(logits.shape, C, label.shape))
-        # print("logits:{} label:{}".format(logits, label))
-        l = loss_fct(logits.view(-1, C), label.view(-1))
+        # 获取指定层的隐藏状态，并将其移动到模型所在的设备上
+        sequence_output = (
+            hidden_states[probe.layer_num].to(probe.device).to(probe.default_dtype)
+        )
 
+    # 使用探针模型对隐藏状态进行前向传播，得到对数几率
+    logits = probe(sequence_output)
 
-        train_loss += l.item()
-        l.backward()
-        optimizer.step()
+    # 如果模型类型为"trec"，则增加一个维度
+    if probe.type == "trec":
+        logits = logits.unsqueeze(0)
 
-        train_acc += (logits.argmax(-1) == label).sum().item()
+    # 获取模型类型对应的类别数量
+    C = type_num[probe.type]
+
+    # 计算损失
+    l = loss_fct(logits.view(-1, C), label.view(-1))
+
+    # 累加损失到总损失上
+    train_loss += l.item()
+
+    # 计算损失的梯度
+    l.backward()
+
+    # 使用优化器更新模型的参数
+    optimizer.step()
+    train_acc += (logits.argmax(-1) == label).sum().item()
     train_loss = train_loss / len(train_data_loader.dataset)
     train_acc = train_acc / len(train_data_loader.dataset)
 
+    # 如果提供了验证数据加载器，则在验证集上评估模型
     if dev_data_loader is not None:
+        # 将模型设置为评估模式
         probe.eval()
+
+        # 对验证数据加载器中的每一个批次进行遍历
         for batch in tqdm(dev_data_loader, desc="[Dev]"):
-            text_input_ids,text_attention_mask, text_token_type_ids,  label = (
+            # 从批次中获取输入数据和标签
+            text_input_ids, text_attention_mask, text_token_type_ids, label = (
                 batch[0],
                 batch[1],
                 batch[2],
                 batch[3],
             )
+
+            # 将输入数据和标签移动到模型所在的设备上
             text_input_ids, text_token_type_ids, text_attention_mask, label = (
                 text_input_ids.to(probe.device),
                 text_token_type_ids.to(probe.device),
                 text_attention_mask.to(probe.device),
                 label.to(probe.device),
             )
+
+            # 不计算梯度，以节省内存并加速计算
             with th.no_grad():
+                # 使用BERT模型对输入数据进行前向传播，得到隐藏状态
                 outputs = bert(
                     text_input_ids,
                     attention_mask=text_attention_mask,
@@ -93,22 +122,30 @@ def train(
                     output_hidden_states=True,
                 )
                 hidden_states = outputs[2]
+
+                # 获取指定层的隐藏状态，并将其移动到模型所在的设备上
                 sequence_output = (
                     hidden_states[probe.layer_num]
                     .to(probe.device)
                     .to(probe.default_dtype)
                 )
+
+                # 使用探针模型对隐藏状态进行前向传播，得到对数几率
                 logits = probe(sequence_output)
 
+                # 计算损失，并累加到总损失上
                 C = type_num[probe.type]
                 l = loss_fct(logits.view(-1, C), label.view(-1))
                 dev_loss += l.item()
 
+            # 计算准确率，并累加到总准确率上
             dev_acc += (logits.argmax(-1) == label).sum().item()
-        # Adjust the learning rate
+
+        # 调整学习率
         if scheduler is not None:
             scheduler.step(dev_loss)
 
+        # 计算平均损失和平均准确率
         dev_loss = dev_loss / len(dev_data_loader.dataset)
         dev_acc = dev_acc / len(dev_data_loader.dataset)
 

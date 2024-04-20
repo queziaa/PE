@@ -36,6 +36,9 @@ class PoincareProbe(nn.Module):
     def __init__(
         self, device, default_dtype=th.float64, layer_num: int = 10, type = "ptb"
     ):
+                # 初始化函数，首先调用父类的初始化方法，然后设置设备、数据类型、Poincaré球模型、探针维度、层级数和类型
+        # 根据类型，初始化不同的中心点，并将它们映射到Poincaré球上
+        # 初始化两个参数proj和trans，这两个参数用于在投影操作中进行矩阵向量乘法
         super().__init__()
         self.device = device
         self.default_dtype = default_dtype
@@ -73,6 +76,11 @@ class PoincareProbe(nn.Module):
         nn.init.uniform_(self.trans, -0.05, 0.05)
 
     def forward(self, sequence_output):
+                # forward方法是这个类的主要方法，它接收一个序列输出，然后进行以下操作：
+        # 1. 使用proj参数对序列输出进行矩阵乘法操作，得到transformed
+        # 2. 使用指数映射将transformed映射到Poincaré球上
+        # 3. 使用trans参数对transformed进行Möbius矩阵向量乘法操作
+        # 4. 根据类型，计算transformed与不同中心点的距离，并返回这些距离
         if sequence_output.dtype != self.proj.dtype:
             sequence_output=sequence_output.to(self.proj.dtype)
         # print(sequence_output.dtype,self.proj.dtype)
@@ -98,6 +106,7 @@ class PoincareProbe(nn.Module):
             
 
     def forward_logits(self,sequence_output):
+                # forward_logits方法与forward方法类似，但它只返回transformed，不计算距离
         sequence_output=sequence_output.to(th.float32)
         # print(sequence_output.dtype,self.proj.dtype)
         transformed = th.matmul(sequence_output, self.proj)
