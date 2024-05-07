@@ -81,11 +81,17 @@ class PoincareProbe(nn.Module):
         # 2. 使用指数映射将transformed映射到Poincaré球上
         # 3. 使用trans参数对transformed进行Möbius矩阵向量乘法操作
         # 4. 根据类型，计算transformed与不同中心点的距离，并返回这些距离
+        # 检查序列输出的数据类型是否与proj参数的数据类型一致，如果不一致，则将序列输出的数据类型转换为proj参数的数据类型
         if sequence_output.dtype != self.proj.dtype:
             sequence_output=sequence_output.to(self.proj.dtype)
-        # print(sequence_output.dtype,self.proj.dtype)
+
+        # 使用proj参数对序列输出进行矩阵乘法操作，得到transformed
         transformed = th.matmul(sequence_output, self.proj)
+
+        # 使用指数映射将transformed映射到Poincaré球上
         transformed = self.ball.expmap0(transformed)
+
+        # 使用trans参数对transformed进行Möbius矩阵向量乘法操作
         transformed = self.ball.mobius_matvec(self.trans, transformed)
         if self.type == "ptb" or self.type == "yelp":
             pos_logits = self.ball.dist(self.neg, transformed).sum(-1)

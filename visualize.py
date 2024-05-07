@@ -283,33 +283,41 @@ if __name__ == "__main__":
         mask1 = torch.LongTensor(mask1).to(device)
         
         with th.no_grad():
+            # 使用BERT模型对输入的文本进行前向传播，得到输出
             outputs_bert = bert(
                 new_text1,
                 attention_mask=mask1,
                 token_type_ids=text_token_type_ids,
                 output_hidden_states=True,
             )
+            # 获取所有层的隐藏状态
             hidden_states_bert = outputs_bert[2]
-            ## sytax
-            # hidden_states_bert = hidden_states_bert[11]
+
+            # 使用语法探针对指定层的隐藏状态进行投影操作，得到投影后的隐藏状态
             proj = sytax_probe.project(hidden_states_bert[11])
+
+            # 使用语法探针计算投影后的隐藏状态的深度
             depth = sytax_probe.depth(proj)
-            # print("depth:{}".format(depth))
-            # print(text_input_ids.shape,text_attention_mask.shape)
-            probs,hidden_states = model(new_text1,attention_mask = mask1,output_hidden_states=True)
-            label_id = torch.argmax(probs,dim=-1).item()
-            # hidden_states = outputs[2]
+
+            # 使用模型对输入的文本进行前向传播，得到预测的类别概率和隐藏状态
+            probs, hidden_states = model(new_text1, attention_mask=mask1, output_hidden_states=True)
+
+            # 获取预测的类别ID
+            label_id = torch.argmax(probs, dim=-1).item()
+
+            # 获取指定层的隐藏状态，并将其移动到模型所在的设备上
             sequence_output = (
                 hidden_states_bert[probe.layer_num].to(probe.device).to(probe.default_dtype)
             )
-            # probs = probe.forward(sequence_output) # 1,2
-            # probs = normalize(probs)
-            # label_id = torch.argmax(probs,dim = -1).item()
-            logits = probe.forward_logits(sequence_output) # 1,L,d
-            L = logits.size(1)
-            # logits = normalize(logits,dim=-1)
-            # sim = torch.matmul(logits,logits.T).view(L,-1) # 
+
+            # 使用探针模型对隐藏状态进行前向传播，得到对数几率
+            logits = probe.forward_logits(sequence_output)
+
+            # 获取对数几率的长度
+            L = logits.size(1)# 去除logits的多余维度
             logits = logits.squeeze()
+
+            # 根据类别数量和标签计算相似度
             if args.num_classes == 2:
                 if label.item() == 0:
                     sim  = probe.ball.dist(probe.neg,logits)
@@ -324,25 +332,31 @@ if __name__ == "__main__":
                     sim = probe.ball.dist(probe.c3, logits)
             elif args.num_classes == 6:
                 sim = probe.ball.dist(probe.centriods[int(label.item())], logits)
-            # sim = probe.ball.dist(logits,logits)
-            # print(logits.shape)
+
+            # 获取文本的键
             text_key = text_key[0]
+
+            # 获取一阶概率和二阶概率
             first_order = aopc_map1[text_key]
             second_order = aopc_map2[text_key]
+
+            # 去除sim和depth的多余维度
             sim = sim.squeeze()
             depth = depth.squeeze()
+
+            # 如果设置了归一化方式为"minmax"，则对sim、depth和first_order进行最小最大归一化
             if args.normalize == "minmax":
                 sim = min_max_normalize(sim)
                 depth = min_max_normalize(depth)
                 first_order = min_max_normalize(first_order)
-                
-            
+
+            # 将sim、depth和first_order从Tensor转换为列表，并移动到CPU上
             sim = sim.detach().cpu().numpy().tolist()
-            # print("test_id:{} sim:{}".format(test_id, sim))
             depth = depth.detach().cpu().numpy().tolist()
-            # print("test_id:{} depth:{}".format(test_id, depth)) 
             first_order = first_order.cpu().numpy().tolist()
-            batch_text = new_text1.squeeze().cpu().numpy().tolist() # remove puncture
+
+            # 获取批次的文本，并移除标点符号
+            batch_text = new_text1.squeeze().cpu().numpy().tolist()
 
             batch_text = [id2tok[t] for t in batch_text]
             raw_text = [x for x in batch_text if x != "[PAD]" and x != "[CLS]" and x != "[SEP]"] # remove padding
